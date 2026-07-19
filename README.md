@@ -97,3 +97,63 @@ Proses transformasi diimplementasikan menggunakan Python dan Pandas untuk member
 ├── orchestrator.py                            # 🚀 Script Mini-Orchestrator Python (Simulasi Airflow)
 ├── orders_clean.csv                           # ✨ Hasil akhir data utama yang telah dibersihkan
 ├── pipeline
+
+```
+
+---
+
+**Dokumentasi**
+
+Step 1: Extract
+<img width="991" height="402" alt="Screenshot 2026-07-18 at 00 22 50" src="https://github.com/user-attachments/assets/9b4f843a-2188-40ad-b5eb-5d0f4eca5de9" />
+
+<img width="988" height="397" alt="Screenshot 2026-07-18 at 00 23 07" src="https://github.com/user-attachments/assets/3a60fd00-8bf7-4f6a-bf76-1e7f2eaef6df" />
+
+---
+Step 2: Data Cleaning
+<img width="990" height="275" alt="Screenshot 2026-07-18 at 00 23 22" src="https://github.com/user-attachments/assets/419e0244-c211-4a20-adc0-c32696428193" />
+
+---
+Step 3: Validate (All Success)
+<img width="985" height="155" alt="Screenshot 2026-07-18 at 00 23 39" src="https://github.com/user-attachments/assets/ad533f55-666f-490c-9e7b-3ca521b2ab87" />
+
+---
+Step 4: Load
+<img width="895" height="171" alt="Screenshot 2026-07-18 at 22 06 08" src="https://github.com/user-attachments/assets/40297c3a-019c-41f2-8204-39c566e538bc" />
+
+---
+Step 5: Orchestrator
+<img width="983" height="528" alt="Screenshot 2026-07-18 at 00 24 27" src="https://github.com/user-attachments/assets/e44fa939-2806-4bf7-b7e0-1ec818ce4b04" />
+
+<img width="985" height="220" alt="Screenshot 2026-07-18 at 00 25 26" src="https://github.com/user-attachments/assets/c14574d6-51f6-44a9-85b1-299a83dc3443" />
+
+---
+Tampilan DAG Airflow
+<img width="1366" height="679" alt="Screenshot 2026-07-18 at 21 55 56" src="https://github.com/user-attachments/assets/4b89bb46-d3c1-4b06-a167-d180191bb458" />
+
+---
+
+**Diagram Arsitektur Pipeline**
+```
+==================================================================================================
+
+  [ 📥 EXTRACT ]                [ ⚙️ TRANSFORM ]              [ 🛡️ VALIDATE ]          [ 💾 LOAD ]
+  
+  +------------+
+  | raw_orders | --+
+  |   (.csv)   |   |
+  +------------+   |         +-------------------+         +-----------------+       +--------------+
+                   +======>  |  Python / Pandas  | =======>  |  Quality Gate   | ====> | orders_clean |
+  +------------+   |         |  - Deduplication  |         |  - Zero Nulls   | [OK]  |    (.csv)    |
+  |raw_products| --+         |  - Data Cleansing |         |  - Zero Dupes   |       +--------------+
+  |   (.csv)   |             |  - Normalization  |         |  - Valid Type   |              |
+  +------------+             +-------------------+         +-----------------+              v
+                                                                    |                +--------------+
+                                                                 [ERROR]             |summary_report|
+                                                                    |                |    (.csv)    |
+                                                                    v                +--------------+
+                                                           +-----------------+
+                                                           | Pipeline Halts  |
+                                                           | & Sends Alert   |
+                                                           +-----------------+
+```
