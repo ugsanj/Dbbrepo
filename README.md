@@ -1,113 +1,89 @@
-**ETL Pipeline Design: E-Commerce Orders**
+# 🚀 Automated ETL Pipeline: E-Commerce Transaction Orchestration
 
-1. **Overview**
-Pipeline ini memproses data transaksi e-commerce harian secara otomatis untuk menghasilkan data siap pakai bagi tim bisnis dan analis. Sistem ini mengonversi data mentah yang rentan terhadap duplikasi, missing values, dan anomali format menjadi tabel data bersih (clean data) terpusat, serta otomatis memproduksi summary report performa per kategori produk.
+## 📊 1. Overview
+Pipeline ini dirancang untuk memproses, membersihkan, dan merekap data transaksi e-commerce harian secara otomatis. Dengan mengimplementasikan arsitektur *Data Quality Gate*, sistem ini menjamin bahwa hanya data yang 100% valid dan memenuhi standar kualitas tinggi yang akan dimuat ke dalam *Data Warehouse* (simulasi). Pipeline ini mentransformasikan data mentah yang rentan anomali menjadi aset siap pakai bagi tim analis dan pengambil keputusan bisnis.
 
-Pipeline ini dirancang tangguh (robust) dengan arsitektur orkestrasi yang mengutamakan keamanan data melalui mekanisme Validation Gate sebelum proses pemuatan data terjadi.
+---
 
-2. **Extract**
-Sumber: File repositori penyimpanan lokal (data lakehouse simulasi/pendaratan awal).
-Format: File .csv terpisah (raw_orders.csv untuk data transaksi dan raw_products.csv untuk data master produk).
-Volume: Skala transaksi harian (daily batch processing) dengan rata-rata 130 baris data mentah per hari sebagai simulasi operasional.
+## 📥 2. Extract
+*   **📂 Source System:** Repositori penyimpanan lokal (*Data Lake* pendaratan awal).
+*   **📄 Data Format:** File `.csv` terpisah (`raw_orders.csv` dan `raw_products.csv`).
+*   **📈 Data Volume:** Skala transaksi harian (*Daily batch processing*) dengan rata-rata 130 baris data mentah per hari.
+*   **🔍 Initial Audit:** Proses inspeksi awal dilakukan dengan memeriksa jumlah baris, *missing values*, duplikasi data, nilai harga negatif, serta konsistensi entri teks pada kolom kritis (`channel` dan `kota`).
 
-3. **Transform**
-Proses transformasi diimplementasikan menggunakan Python dan Pandas melalui langkah-langkah terstruktur berikut:
+---
 
-Langkah 1: Deduplikasi Data (drop_duplicates)
+## ⚙️ 3. Transform
+Proses transformasi diimplementasikan menggunakan Python dan Pandas untuk membersihkan serta memperkaya data (*feature engineering*) melalui langkah-langkah berikut:
 
-Penjelasan: Menghapus baris transaksi yang terduplikasi secara identik.
+*   **🧹 Langkah 1: Deduplikasi Data (`drop_duplicates`)**
+    *   *Penjelasan:* Menghapus baris transaksi yang terduplikasi secara identik.
+    *   *Kenapa:* Mencegah terjadinya penggandaan nilai finansial (*over-reporting*) saat menghitung total pendapatan (*revenue*).
+*   **❌ Langkah 2: Eliminasi Anomali Finansial (`total_harga >= 0`)**
+    *   *Penjelasan:* Memfilter dan membuang baris data transaksi yang memiliki nilai `total_harga` di bawah nol.
+    *   *Kenapa:* Nilai harga negatif mengindikasikan adanya *system error* atau kerusakan data hulu yang dapat mendistorsi analisis statistik.
+*   **🛠️ Langkah 3: Imputasi Nilai Hilang (*Missing Values*)**
+    *   *Penjelasan:* Mengisi kolom `customer_email` yang kosong dengan `unknown@placeholder.com` dan kolom `total_harga` yang kosong dengan nilai median data.
+    *   *Kenapa:* Menjaga kelengkapan data skema tanpa merusak distribusi nilai asli akibat *outlier* (median lebih aman dibanding *mean*).
+*   **📅 Langkah 4: Standarisasi Tipe Tanggal (`to_datetime`)**
+    *   *Penjelasan:* Mengonversi tipe data kolom `tanggal_order` menjadi `datetime64[ns]` dengan opsi `format='mixed'`.
+    *   *Kenapa:* Menghindari kegagalan *parsing* akibat adanya variasi format penulisan tanggal dari sistem *source* yang berbeda.
+*   **🔤 Langkah 5: Normalisasi & Konsistensi Teks (`strip`, `title`, `lower`)**
+    *   *Penjelasan:* Menghapus spasi tidak beraturan, mengubah kolom `kota` menjadi *Title Case*, dan kolom `channel` menjadi *lowercase* serta mengganti spasi menjadi *underscore*.
+    *   *Kenapa:* Menjamin konsistensi data kualitatif saat dilakukan proses pengelompokan (*aggregation*) di tahap akhir.
+*   **✨ Langkah 6: Pengayaan Data (*Feature Engineering*)**
+    *   *Penjelasan:* Mengekstrak nama bulan dari tanggal order serta membuat kolom klasifikasi baru `kategori_harga` (kecil, sedang, besar) menggunakan `np.where`.
+    *   *Kenapa:* Menyediakan dimensi analisis siap pakai bagi tim bisnis untuk mempercepat pembuatan metrik performa di *dashboard*.
 
-Kenapa: Menghindari penggandaan metrik finansial (over-reporting) saat menganalisis pendapatan (revenue).
+---
 
-Langkah 2: Pembersihan Anomali Finansial (total_harga >= 0)
+## 💾 4. Load
+*   **🏛️ Target Destination:** Disimpan ke dalam media penyimpanan siap konsumsi (*Data Warehouse* / *Analytics Layer*). Pada lingkungan produksi nyata, data diarahkan ke tabel *enterprise cloud* seperti Google BigQuery.
+*   **💾 Output Artifacts:** Menghasilkan dua berkas `.csv` bersih:
+    1.  `orders_clean.csv`: Berisi data terperinci pasca-pembersihan yang memuat 13 kolom utama terpilih.
+    2.  `summary_report.csv`: Berisi ringkasan metrik agregat (`total_orders`, `total_revenue`, `avg_revenue`) yang dikelompokkan berdasarkan kategori produk.
 
-Penjelasan: Memfilter dan membuang baris data yang memiliki nilai total_harga di bawah nol.
+---
 
-Kenapa: Nilai harga negatif merupakan system error atau korupsi data pada source yang dapat merusak akurasi perhitungan rata-rata pendapatan.
+## 🔗 5. Orchestration
+*   **🛠️ Tooling:** Apache Airflow.
+*   **⏱️ Scheduling:** Dikonfigurasi untuk berjalan secara otomatis menggunakan *cron expression* `'0 6 * * *'` (Setiap hari pukul 06:00 WIB).
+*   **⛓️ Directed Acyclic Graph (DAG) Flow:**
+    ```text
+    [Start] ──> [Extract Orders] ──> [Transform & Clean] ──> [Validate Quality] ──> [Load to Warehouse] ──> [Generate Report] ──> [Send Notification] ──> [End]
+    ```
 
-Langkah 3: Imputasi Nilai Hilang (fillna)
+---
 
-Penjelasan: Mengisi kolom customer_email yang kosong dengan unknown@placeholder.com dan kolom total_harga yang kosong dengan nilai median data.
+## 🚨 6. Error Handling
+*   **⚠️ Skenario 1: Berkas Sumber Data Hilang / Terlambat**
+    *   *Solusi:* Jika file `raw_orders.csv` absen, Apache Airflow memicu kebijakan otomatis `retries: 3` dengan jeda waktu `retry_delay: 5 menit`. Dilengkapi dengan algoritma *exponential backoff* pada *script* lokal untuk memberikan toleransi waktu bagi sistem hulu.
+*   **🛡️ Skenario 2: Kegagalan Integritas pada Data Quality Gate**
+    *   *Solusi:* Jika data hasil transformasi terdeteksi masih melanggar aturan kualitas (misal masih ada nilai kosong atau duplikat), task `validate_quality` sengaja melemparkan `ValueError` untuk menghentikan seluruh sisa aliran pipeline secara paksa. Hal ini menjaga agar data kotor tidak pernah masuk ke *Data Warehouse*.
 
-Kenapa: Menjaga integritas skema data agar tidak error saat dianalisis, tanpa mendistorsi distribusi nilai asli secara ekstrem (menggunakan median lebih aman terhadap pencilan dibanding mean).
+---
 
-Langkah 4: Standarisasi Format Tanggal (to_datetime)
+## 🛡️ 7. Monitoring & Observability
+*   **📈 Pipeline Success Status:** Sistem menuliskan log kronologis secara *real-time* ke file `pipeline_log.txt` dengan penanda status `[RUNNING]`, `[SUCCESS]`, atau `[FATAL]`. Di akhir eksekusi, fungsi `task_notify` akan mengirimkan laporan notifikasi ringkas (simulasi Slack/Email) berisi volume data yang diproses dan total *revenue*.
+*   **🧪 Data Quality Indicators:** Sistem menguji secara ketat 4 indikator utama sebelum proses pemuatan data:
+    *   `zero_duplicates` (Harus True)
+    *   `zero_nulls` (Harus True)
+    *   `zero_negative_price` (Harus True)
+    *   `datetime_type` (Harus True)
 
-Penjelasan: Mengubah tipe data kolom tanggal_order menjadi format datetime64[ns] dengan parameter format='mixed'.
+---
 
-Kenapa: Menghindari kegagalan parsing akibat variasi format penulisan tanggal dari sistem source yang berbeda.
+## 📂 8. Project Repository Structure
 
-Langkah 5: Normalisasi Teks dan String (strip, title, lower)
-
-Penjelasan: Menghapus spasi tak beraturan, mengubah kolom kota menjadi Title Case, dan kolom channel menjadi lowercase serta mengganti spasi menjadi underscore.
-
-Kenapa: Menjamin konsistensi data kualitatif saat dilakukan proses pengelompokan (GROUP BY) di tahap analisis.
-
-Langkah 6: Pengayaan Data / Feature Engineering
-
-Penjelasan: Ekstraksi nama bulan dari tanggal order dan pembuatan kolom turunan kategori_harga (kecil, sedang, besar) berbasis pengondisian np.where.
-
-Kenapa: Menyediakan dimensi analisis baru yang siap pakai bagi user bisnis tanpa perlu melakukan komputasi ulang di sisi dashboard.
-
-4. **Load**
-Tujuan: Disimpan ke dalam media penyimpanan terstruktur siap konsumsi (Data Warehouse simulasi). Pada level produksi sesungguhnya, data diarahkan langsung ke tabel enterprise cloud seperti Google BigQuery.
-
-Format Output: Dua file .csv bersih, yaitu:
-
-orders_clean.csv: Berisi data granular hasil pembersihan yang memuat 13 kolom utama terpilih.
-
-summary_report.csv: Berisi ringkasan metrik agregat (total_orders, total_revenue, avg_revenue) yang dikelompokkan berdasarkan kategori produk.
-
-5. **Orchestration**
-Tool: Apache Airflow (diimplementasikan menggunakan komparasi Local Mini-Orchestrator untuk simulasi cepat dan Airflow DAG File siap produksi).
-
-Schedule: Diatur berjalan secara otomatis menggunakan cron expression '0 6 * * *' (Setiap hari pukul 06:00 WIB).
-
-DAG Flow:
-
-[Start] >> [Extract Orders] >> [Transform & Clean] >> [Validate Quality] >> [Load to Warehouse] >> [Generate Report] >> [Send Notification] >> [End]
-
-
-6. **Error Handling**
-Skenario 1: File Sumber Data Mentah Tidak Ditemukan
-
-Penjelasan & Solusi: Jika raw_orders.csv absen, sistem memicu FileNotFoundError. Apache Airflow dikonfigurasi dengan retries: 3 dan retry_delay: 5 menit dengan exponential backoff di tingkat lokal untuk memberi jeda waktu bagi sistem hulu mengunggah file.
-
-Skenario 2: Kegagalan Validasi Integritas Data (Data Quality Gate)
-
-Penjelasan & Solusi: Jika data hasil transformasi terdeteksi masih mengandung duplikat atau nilai kosong, task validate_quality sengaja melemparkan ValueError dan menghentikan seluruh sisa aliran pipeline secara paksa. Hal ini mencegah data kotor mengontaminasi Data Warehouse.
-
-7. **Monitoring**
-Bagaimana cara tahu pipeline sukses?
-
-Sistem menuliskan log kronologis secara real-time ke file pipeline_log.txt dengan penanda status [RUNNING], [SUCCESS], atau [FATAL].
-
-Di akhir eksekusi, fungsi task_notify akan mengirimkan laporan notifikasi ringkas (simulasi Slack/Email) yang menampilkan metrik volume data yang berhasil diproses dan total revenue yang masuk.
-
-Bagaimana cara tahu data berkualitas?
-
-Melalui implementasi Validation Gate otomatis yang melakukan pengujian ketat terhadap 4 indikator utama:
-
-zero_duplicates (Harus True)
-
-zero_nulls (Harus True)
-
-zero_negative_price (Harus True)
-
-datetime_type (Harus True)
-
-Hanya data yang mendapatkan status ✅ Semua check PASSED yang diizinkan melangkah ke proses pengisian repositori akhir.
-
-
-📂 Struktur Repositori Project
-
-├── dags/
+```text
+.
+├── dags/                                      # 📜 Folder khusus untuk DAG Apache Airflow
 │   ├── __pycache__/
-│   │   └── etl_ecommerce_dag.cpython-311.pyc  # Compiled Python file
-│   └── etl_ecommerce_dag.py                   # File DAG Airflow Production
-├── data/
-│   └── raw_orders.csv                         # Backup / Source data mentah harian
-├── screenshot/                                # Dokumentasi bukti eksekusi & UI Airflow
+│   │   └── etl_ecommerce_dag.cpython-311.pyc  # ⚙️ Compiled Python file
+│   └── etl_ecommerce_dag.py                   # 🛠️ File DAG Airflow Production-Ready
+├── data/                                      # 💾 Repositori backup sumber data mentah
+│   └── raw_orders.csv                         
+├── screenshot/                                # 📸 Bukti eksekusi pipeline & antarmuka Airflow UI
 │   ├── Screenshot.png
 │   ├── Screenshot.png
 │   ├── Screenshot.png
@@ -117,11 +93,7 @@ Hanya data yang mendapatkan status ✅ Semua check PASSED yang diizinkan melangk
 │   ├── Screenshot.png
 │   ├── Screenshot.png
 │   └── Screenshot.png
-├── docker-compose.yaml                        # Konfigurasi container Apache Airflow lokal
-├── orchestrator.py                            # Script Mini-Orchestrator Python (Simulasi Airflow)
-├── orders_clean.csv                           # Hasil output data yang telah dibersihkan
-├── pipeline_log.txt                           # Log kronologis dari jalannya pipeline
-├── raw_orders.csv                             # Input data transaksi mentah utama
-├── raw_products.csv                           # Input data master produk mentah
-├── README.md                                  # Dokumentasi utama proyek ETL
-└── summary_report.csv                         # Hasil output report agregat per kategori
+├── docker-compose.yaml                        # 🐳 Konfigurasi container Apache Airflow lokal
+├── orchestrator.py                            # 🚀 Script Mini-Orchestrator Python (Simulasi Airflow)
+├── orders_clean.csv                           # ✨ Hasil akhir data utama yang telah dibersihkan
+├── pipeline
